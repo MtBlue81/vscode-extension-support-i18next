@@ -3,6 +3,16 @@ import ts from "typescript";
 import path from "path";
 
 const localeFilePath = "src/locales/ja.json";
+const simpleCalls = ["t"];
+const objectCalls: Record<string, string[]> = {
+  errorDialogOperations: ["showMessage"],
+  snackbarOperations: [
+    "showInfoMessage",
+    "showErrorMessage",
+    "showSuccessMessage",
+    "showWarningMessage",
+  ],
+};
 
 export const activate = (context: vscode.ExtensionContext) => {
   context.subscriptions.push(
@@ -67,35 +77,44 @@ const findFunctionCalls = (code: string, isReact: boolean): FunctionCall[] => {
   );
 
   const calls: FunctionCall[] = [];
-  const pushCalls = (node: ts.CallExpression) => {
-    // 識別子を用いた単純な関数呼び出しではない場合は対象外
-    if (!ts.isIdentifier(node.expression)) {
-      return;
+  const conditionalCheck = (node: ts.Node) => {
+    if (ts.isConditionalExpression(node)) {
+      conditionalCheck(node.whenFalse);
+      conditionalCheck(node.whenTrue);
+    } else if (ts.isStringLiteral(node)) {
+      calls.push({
+        key: node.text,
+        start: node.getStart(),
+        end: node.getEnd(),
+      });
     }
-
-    const name = node.expression.text;
-    // 関数名が `t` 以外の場合は対象外
-    if (name !== "t") {
-      return;
-    }
-
-    if (node.arguments.length === 0) {
-      return;
-    }
-
-    const arg0 = node.arguments[0];
-    // 第1引数が文字列リテラル以外の場合は対象外
-    if (!ts.isStringLiteral(arg0)) {
-      return;
-    }
-
-    const key = arg0.text;
-    calls.push({ key, start: node.getStart(), end: node.getEnd() });
   };
 
   const search = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
-      pushCalls(node);
+      // errorDialogOperations, snackbarOperationsの場合
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression)
+      ) {
+        const objName = node.expression.expression.text;
+        const fnName = node.expression.name.text;
+        if (objectCalls[objName] && objectCalls[objName].includes(fnName)) {
+          const arg = node.arguments[0];
+          conditionalCheck(arg);
+        }
+        return;
+      }
+
+      // シンプルなt関数の場合
+      if (
+        ts.isIdentifier(node.expression) &&
+        simpleCalls.includes(node.expression.text)
+      ) {
+        const arg0 = node.arguments[0];
+        conditionalCheck(arg0);
+        return;
+      }
     }
 
     ts.forEachChild(node, search);
