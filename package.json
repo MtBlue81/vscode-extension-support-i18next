@@ -2,7 +2,7 @@
   "name": "support-i18next",
   "displayName": "support-i18next",
   "description": "show i18next translation in the editor",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.81.0"
   },
