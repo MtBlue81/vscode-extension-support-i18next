@@ -34,15 +34,14 @@ const updateDecorations = async (editor?: vscode.TextEditor) => {
   const decorations = calls.map(({ start, end, key }) => {
     const range = new vscode.Range(
       editor.document.positionAt(start),
-      // カッコ内にafterを表示するために-1
-      editor.document.positionAt(end - 1)
+      editor.document.positionAt(end)
     );
 
     return {
       range,
       renderOptions: {
         after: {
-          contentText: "·" + localeObject[key] ?? "No translation",
+          contentText: `· ${localeObject[key] ?? "No translation"}`,
           opacity: "0.6",
         },
       },
