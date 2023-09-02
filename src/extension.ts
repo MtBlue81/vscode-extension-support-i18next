@@ -2,17 +2,8 @@ import vscode from "vscode";
 import ts from "typescript";
 import path from "path";
 
-const localeFilePath = "src/locales/ja.json";
-const simpleCalls = ["t"];
-const objectCalls: Record<string, string[]> = {
-  errorDialogOperations: ["showMessage"],
-  snackbarOperations: [
-    "showInfoMessage",
-    "showErrorMessage",
-    "showSuccessMessage",
-    "showWarningMessage",
-  ],
-};
+const EXTENSION_ID = "support-i18next";
+const localePlaceholder = "{locale}";
 
 export const activate = (context: vscode.ExtensionContext) => {
   context.subscriptions.push(
@@ -52,7 +43,7 @@ const updateDecorations = async (editor?: vscode.TextEditor) => {
       renderOptions: {
         after: {
           contentText: `· ${localeObject[key] ?? "No translation"}`,
-          opacity: "0.6",
+          opacity: "0.7",
         },
       },
     };
@@ -89,6 +80,8 @@ const findFunctionCalls = (code: string, isReact: boolean): FunctionCall[] => {
       });
     }
   };
+  const simpleCallNames = getSimpleCallNames();
+  const objectPropertyCalls = getObjectPropertyCalls();
 
   const search = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
@@ -99,7 +92,10 @@ const findFunctionCalls = (code: string, isReact: boolean): FunctionCall[] => {
       ) {
         const objName = node.expression.expression.text;
         const fnName = node.expression.name.text;
-        if (objectCalls[objName] && objectCalls[objName].includes(fnName)) {
+        if (
+          objectPropertyCalls[objName] &&
+          objectPropertyCalls[objName].includes(fnName)
+        ) {
           const arg = node.arguments[0];
           conditionalCheck(arg);
         }
@@ -109,7 +105,7 @@ const findFunctionCalls = (code: string, isReact: boolean): FunctionCall[] => {
       // シンプルなt関数の場合
       if (
         ts.isIdentifier(node.expression) &&
-        simpleCalls.includes(node.expression.text)
+        simpleCallNames.includes(node.expression.text)
       ) {
         const arg0 = node.arguments[0];
         conditionalCheck(arg0);
@@ -125,12 +121,36 @@ const findFunctionCalls = (code: string, isReact: boolean): FunctionCall[] => {
   return calls;
 };
 
+const getSimpleCallNames = (): string[] => {
+  const config = vscode.workspace.getConfiguration(EXTENSION_ID);
+  return config.get<string[]>("simpleCallNames", ["t"]);
+};
+
+const getObjectPropertyCalls = (): Record<string, string[]> => {
+  const config = vscode.workspace.getConfiguration(EXTENSION_ID);
+  return config.get<Record<string, string[]>>("objectPropertyCalls", {});
+};
+
+const getLocaleFilePath = (): string => {
+  const config = vscode.workspace.getConfiguration(EXTENSION_ID);
+  let localeFilePath = config.get<string>(
+    "localeFilePath",
+    "src/locales/{locale}.json"
+  );
+  if (localeFilePath.includes(localePlaceholder)) {
+    const lang = config.get("displayLanguage", "ja");
+    localeFilePath = localeFilePath.replace(localePlaceholder, lang);
+  }
+  return localeFilePath;
+};
+
 const getLocaleObject = async (): Promise<Record<string, string>> => {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
     console.error("No workspace folder found");
     return {};
   }
+  const localeFilePath = getLocaleFilePath();
   const workspacePath = folders[0].uri.fsPath;
   const filePath = path.resolve(workspacePath, localeFilePath);
   const fileUri = vscode.Uri.file(filePath);
